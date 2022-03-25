@@ -1,6 +1,7 @@
 FROM library/tomcat:9-jre11-openjdk-slim-bullseye
 
 ENV ARCH=amd64 \
+  S6_VER=3.1.0.1 \
   GUAC_VER=1.4.0 \
   GUACAMOLE_HOME=/app/guacamole \
   PG_MAJOR=13 \
@@ -10,7 +11,7 @@ ENV ARCH=amd64 \
 
 # Apply the s6-overlay
 
-RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/v1.20.0.0/s6-overlay-${ARCH}.tar.gz" \
+RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/v${S6_VER}/s6-overlay-${ARCH}.tar.gz" \
   && tar -xzf s6-overlay-${ARCH}.tar.gz -C / \
   && tar -xzf s6-overlay-${ARCH}.tar.gz -C /usr ./bin \
   && rm -rf s6-overlay-${ARCH}.tar.gz \
