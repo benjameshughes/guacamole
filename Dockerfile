@@ -1,4 +1,4 @@
-FROM library/tomcat:9-jre11
+FROM library/tomcat:9-jre11-openjdk-slim-bullseye
 
 ENV ARCH=amd64 \
   GUAC_VER=1.4.0 \
