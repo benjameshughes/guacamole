@@ -1,4 +1,4 @@
-FROM tomcat:8.5-jre8-openjdk-slim-bullseye
+FROM tomcat:8.5.78-jre8-openjdk-bullseye
 
 ENV ARCH=amd64 \
   S6_VER=v2.2.0.2 \
@@ -9,7 +9,8 @@ ENV ARCH=amd64 \
   POSTGRES_USER=guacamole \
   POSTGRES_DB=guacamole_db
 
-RUN apt-get update && apt-get install -y curl tar
+# Update packages and distro
+RUN apt-get update && apt-get dist-upgrade -y
 
 # Apply the s6-overlay
 RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/${S6_VER}/s6-overlay-${ARCH}.tar.gz" \
@@ -68,6 +69,12 @@ RUN set -xe \
     && cp guacamole-${i}-${GUAC_VER}/guacamole-${i}-${GUAC_VER}.jar ${GUACAMOLE_HOME}/extensions-available/ \
     && rm -rf guacamole-${i}-${GUAC_VER} guacamole-${i}-${GUAC_VER}.tar.gz \
   ;done
+
+# Remove un-needed dependencies due to using a slim distro
+RUN apt-get update && apt-get remove -y \
+  curl \
+  tar \
+  build-essential
 
 ENV PATH=/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH
 ENV GUACAMOLE_HOME=/config/guacamole
