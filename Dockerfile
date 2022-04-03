@@ -1,4 +1,4 @@
-FROM tomcat:8.5.78-jre8-openjdk-bullseye
+FROM tomcat:9.0.62-jre8-openjdk-slim-buster
 
 ENV ARCH=amd64 \
   S6_VER=v2.2.0.2 \
@@ -8,9 +8,6 @@ ENV ARCH=amd64 \
   PGDATA=/config/postgres \
   POSTGRES_USER=guacamole \
   POSTGRES_DB=guacamole_db
-
-# Update packages and distro
-RUN apt-get update && apt-get dist-upgrade -y
 
 # Apply the s6-overlay
 RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/${S6_VER}/s6-overlay-${ARCH}.tar.gz" \
@@ -75,6 +72,9 @@ RUN apt-get update && apt-get remove -y \
   curl \
   tar \
   build-essential
+
+# Final clean up
+RUN apt-get autoremove -y
 
 ENV PATH=/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH
 ENV GUACAMOLE_HOME=/config/guacamole
