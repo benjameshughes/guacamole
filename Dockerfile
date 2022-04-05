@@ -1,4 +1,4 @@
-FROM tomcat:9.0.62-jre8-openjdk-slim-buster
+FROM tomcat:9.0.62-jre8-openjdk-slim-bullseye
 
 ENV ARCH=amd64 \
   S6_VER=v2.2.0.2 \
@@ -10,10 +10,16 @@ ENV ARCH=amd64 \
   POSTGRES_DB=guacamole_db
 
 RUN apt-get update && apt-get install -y \
-  apt-transport-https
-
-RUN apt-get install -y \
-  curl
+  apt-transport-https \
+  curl \
+  build-essential \
+  libcairo2-dev libjpeg62-turbo-dev libpng-dev \
+  libossp-uuid-dev libavcodec-dev libavutil-dev \
+  libswscale-dev freerdp2-dev libfreerdp-client2-2 libpango1.0-dev \
+  libssh2-1-dev libtelnet-dev libvncserver-dev \
+  libpulse-dev libssl-dev libvorbis-dev libwebp-dev libwebsockets-dev \
+  ghostscript postgresql-${PG_MAJOR} \
+  && rm -rf /var/lib/apt/lists/*
 
 # Apply the s6-overlay
 RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/${S6_VER}/s6-overlay-${ARCH}.tar.gz" \
@@ -25,16 +31,6 @@ RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/$
     ${GUACAMOLE_HOME}/extensions
 
 WORKDIR ${GUACAMOLE_HOME}
-
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-  libcairo2-dev libjpeg62-turbo-dev libpng-dev \
-  libossp-uuid-dev libavcodec-dev libavutil-dev \
-  libswscale-dev freerdp2-dev libfreerdp-client2-2 libpango1.0-dev \
-  libssh2-1-dev libtelnet-dev libvncserver-dev \
-  libpulse-dev libssl-dev libvorbis-dev libwebp-dev libwebsockets-dev \
-  ghostscript postgresql-${PG_MAJOR} \
-  && rm -rf /var/lib/apt/lists/*
 
 # Link FreeRDP to where guac expects it to be
 RUN [ "$ARCH" = "armhf" ] && ln -s /usr/local/lib/freerdp /usr/lib/arm-linux-gnueabihf/freerdp || exit 0
@@ -73,14 +69,12 @@ RUN set -xe \
     && rm -rf guacamole-${i}-${GUAC_VER} guacamole-${i}-${GUAC_VER}.tar.gz \
   ;done
 
-# Remove un-needed dependencies due to using a slim distro
-RUN apt-get update && apt-get remove -y \
-  curl \
-  tar \
-  build-essential
-
 # Final clean up
-RUN apt-get autoremove -y
+RUN apt-get remove -y  \
+  apt-transport-https \
+  curl \
+  build-essential \
+  && rm -rf /var/lib/apt/lists/*
 
 ENV PATH=/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH
 ENV GUACAMOLE_HOME=/config/guacamole
