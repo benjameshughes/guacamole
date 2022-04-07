@@ -2,18 +2,34 @@ FROM tomcat:9.0.62-jre8-openjdk-slim-buster
 
 ENV ARCH=amd64 \
   S6_VER=v2.2.0.2 \
-  GUAC_VER=1.4.0 \
+  GUAC_VER=1.3.0 \
   GUACAMOLE_HOME=/app/guacamole \
-  PG_MAJOR=13 \
+  PG_MAJOR=12 \
   PGDATA=/config/postgres \
   POSTGRES_USER=guacamole \
   POSTGRES_DB=guacamole_db
 
-RUN apt-get update && apt-get install -y \
-  apt-transport-https
+RUN apt-get update && apt-get install -y gnupg2 wget
 
-RUN apt-get install -y \
-  curl
+# Add the Postgresql repo
+# Create the file repository configuration:
+RUN  sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+# Import the repository signing key:
+RUN wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+  apt-transport-https \
+  ca-certificates \
+  curl \
+  libcairo2-dev libjpeg62-turbo-dev libpng-dev \
+  libossp-uuid-dev libavcodec-dev libavutil-dev \
+  libswscale-dev freerdp2-dev libfreerdp-client2-2 libpango1.0-dev \
+  libssh2-1-dev libtelnet-dev libvncserver-dev \
+  libpulse-dev libssl-dev libvorbis-dev libwebp-dev libwebsockets-dev \
+  ghostscript postgresql-${PG_MAJOR} \
+  && rm -rf /var/lib/apt/lists/*
 
 # Apply the s6-overlay
 RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/${S6_VER}/s6-overlay-${ARCH}.tar.gz" \
@@ -25,16 +41,6 @@ RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/$
     ${GUACAMOLE_HOME}/extensions
 
 WORKDIR ${GUACAMOLE_HOME}
-
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-  libcairo2-dev libjpeg62-turbo-dev libpng-dev \
-  libossp-uuid-dev libavcodec-dev libavutil-dev \
-  libswscale-dev freerdp2-dev libfreerdp-client2-2 libpango1.0-dev \
-  libssh2-1-dev libtelnet-dev libvncserver-dev \
-  libpulse-dev libssl-dev libvorbis-dev libwebp-dev libwebsockets-dev \
-  ghostscript postgresql-${PG_MAJOR} \
-  && rm -rf /var/lib/apt/lists/*
 
 # Link FreeRDP to where guac expects it to be
 RUN [ "$ARCH" = "armhf" ] && ln -s /usr/local/lib/freerdp /usr/lib/arm-linux-gnueabihf/freerdp || exit 0
@@ -72,12 +78,6 @@ RUN set -xe \
     && cp guacamole-${i}-${GUAC_VER}/guacamole-${i}-${GUAC_VER}.jar ${GUACAMOLE_HOME}/extensions-available/ \
     && rm -rf guacamole-${i}-${GUAC_VER} guacamole-${i}-${GUAC_VER}.tar.gz \
   ;done
-
-# Remove un-needed dependencies due to using a slim distro
-RUN apt-get update && apt-get remove -y \
-  curl \
-  tar \
-  build-essential
 
 # Final clean up
 RUN apt-get autoremove -y
