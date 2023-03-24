@@ -1,85 +1,64 @@
-# Define build-time variables
-ARG ALPINE_VER=3.15
-ARG GUAC_VER=1.4.1
-ARG GUAC_LDAP_VER=1.4.1
-ARG POSTGRES_JDBC_VER=42.2.24
+# Build environment
+FROM maven:3.8.4-openjdk-17-slim AS build
+WORKDIR /app
+COPY . .
+RUN mvn package
 
-# Build stage
-FROM alpine:${ALPINE_VER} AS build
+# Production environment
+FROM gcr.io/distroless/java:17
+ENV GUACAMOLE_HOME=/config/guacamole
+ENV POSTGRES_USER=guacamole
+ENV POSTGRES_PASSWORD=mysecretpassword
+ENV POSTGRES_DB=guacamole_db
 
-RUN apk add --no-cache --virtual .build-deps \
-    build-base \
+# Install dependencies
+RUN apt-get update && apt-get install -y \
     ca-certificates \
-    freerdp-dev \
-    g++ \
-    jpeg-dev \
-    libjpeg-turbo-dev \
-    libpng-dev \
-    libressl-dev \
-    libtool \
-    make \
-    pango-dev \
-    pulseaudio-dev \
-    tar \
-    uuid-dev \
-    vncserver-dev \
-    zlib-dev
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /usr/local/src
+# Copy Guacamole and extensions
+COPY --from=build /app/guacamole-server/target/guacamole-server-* /app/guacamole-server/
+COPY --from=build /app/extensions /app/guacamole-server/extensions
 
-RUN wget -q https://downloads.apache.org/guacamole/${GUAC_VER}/source/guacamole-server-${GUAC_VER}.tar.gz && \
-    tar -zxf guacamole-server-${GUAC_VER}.tar.gz && \
-    rm guacamole-server-${GUAC_VER}.tar.gz && \
-    cd guacamole-server-${GUAC_VER} && \
-    ./configure --with-init-dir=/etc/init.d && \
-    make && \
-    make install && \
-    cd .. && \
-    rm -rf guacamole-server-${GUAC_VER}
+# Set version numbers
+ARG GUAC_VER=1.4.0
+ARG AUTH_LDAP_VER=${GUAC_VER}
+ARG AUTH_DUO_VER=${GUAC_VER}
+ARG AUTH_HEADER_VER=${GUAC_VER}
+ARG AUTH_CAS_VER=${GUAC_VER}
+ARG AUTH_OPENID_VER=${GUAC_VER}
+ARG AUTH_QUICKCONNECT_VER=${GUAC_VER}
+ARG AUTH_TOTP_VER=${GUAC_VER}
 
-# Runtime stage
-FROM alpine:${ALPINE_VER}
+# Install Guacamole client and PostgreSQL auth adapter
+RUN mkdir -p ${GUACAMOLE_HOME}/lib \
+    && curl -SLo ${GUACAMOLE_HOME}/lib/guacamole-client.jar \
+        "https://downloads.apache.org/guacamole/${GUAC_VER}/binary/guacamole-${GUAC_VER}.war" \
+    && curl -SLo ${GUACAMOLE_HOME}/lib/postgresql.jar \
+        "https://jdbc.postgresql.org/download/postgresql-42.3.0.jar" \
+    && chmod 444 ${GUACAMOLE_HOME}/lib/*.jar
 
-RUN apk add --no-cache \
-    freerdp \
-    ghostscript \
-    imagemagick \
-    libcairo \
-    libjpeg-turbo \
-    libpng \
-    libressl \
-    libuuid \
-    pango \
-    postgresql-client \
-    pulseaudio \
-    ttf-dejavu \
-    vncserver \
-    zlib
+# Install optional extensions
+RUN mkdir -p ${GUACAMOLE_HOME}/extensions-available \
+    && for i in auth-ldap auth-duo auth-header auth-cas auth-openid auth-quickconnect auth-totp; do \
+        curl -SLo ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar \
+            "https://downloads.apache.org/guacamole/${GUAC_VER}/binary/guacamole-${i}-${!i/_/-}-${!i/VER/_VER}.tar.gz" \
+        && tar -xzf ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar -C ${GUACAMOLE_HOME}/extensions-available \
+        && rm ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar \
+    ;done
 
-ENV GUACAMOLE_HOME=/config/guacamole \
-    POSTGRES_USER=guacamole \
-    POSTGRES_PASSWORD=guacamole \
-    POSTGRES_DB=guacamole_db \
-    GUAC_LDAP_VERSION=${GUAC_LDAP_VER} \
-    POSTGRES_JDBC_VERSION=${POSTGRES_JDBC_VER} \
-    PATH=$PATH:/usr/local/guacamole/bin
+# Clean up dependencies
+RUN apt-get purge -y \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /usr/local/lib/freerdp/* /usr/lib/freerdp/
-COPY --from=build /usr/local/lib/* /usr/local/lib/
-COPY --from=build /usr/local/guacamole /usr/local/guacamole
-COPY guacamole-init /usr/local/guacamole/bin/guacamole-init
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Copy init script
+COPY init /usr/local/bin/
+RUN chmod +x /usr/local/bin/init
 
-RUN mkdir -p /config/guacamole/extensions \
-    /config/guacamole/lib \
-    /config/postgres && \
-    addgroup guacd && \
-    adduser -G guacd -D -s /sbin/nologin guacd && \
-    chown -R guacd:guacd /usr/local/guacamole /config/guacamole /config/postgres && \
-    chmod +x /usr/local/guacamole/bin/guacamole-init /usr/local/bin/docker-entrypoint.sh
-
-USER guacd
-
+# Expose port 8080
 EXPOSE 8080
 
-ENTRYPOINT [ "/usr/local/bin/docker-entrypoint.sh" ]
+# Run Guacamole on startup
+ENTRYPOINT ["/usr/local/bin/init"]
+CMD ["guacd"]
