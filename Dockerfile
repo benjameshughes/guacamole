@@ -1,88 +1,129 @@
-FROM tomcat:9.0.62-jre8-openjdk-slim-bullseye
+FROM alpine:3.15
 
-ENV ARCH=amd64 \
-  S6_VER=v2.2.0.2 \
-  GUAC_VER=1.4.0 \
-  GUACAMOLE_HOME=/app/guacamole \
-  PG_MAJOR=13 \
-  PGDATA=/config/postgres \
-  POSTGRES_USER=guacamole \
-  POSTGRES_DB=guacamole_db
+ENV GUAC_VER=1.4.0 \
+    GUACAMOLE_HOME=/app/guacamole \
+    POSTGRES_USER=guacamole \
+    POSTGRES_DB=guacamole_db \
+    TOMCAT_VERSION=9.0.54-r0 \
+    S6_VERSION=2.2.0.3 \
+    POSTGRES_VERSION=13.4-r0
 
-RUN apt-get update && apt-get install -y \
-  apt-transport-https \
-  curl \
-  build-essential \
-  libcairo2-dev libjpeg62-turbo-dev libpng-dev \
-  libossp-uuid-dev libavcodec-dev libavutil-dev \
-  libswscale-dev freerdp2-dev libfreerdp-client2-2 libpango1.0-dev \
-  libssh2-1-dev libtelnet-dev libvncserver-dev \
-  libpulse-dev libssl-dev libvorbis-dev libwebp-dev libwebsockets-dev \
-  ghostscript postgresql-${PG_MAJOR} \
-  && rm -rf /var/lib/apt/lists/*
+# Install dependencies
+RUN apk add --update --no-cache \
+        bash \
+        curl \
+        freerdp \
+        ghostscript \
+        gnu-libiconv \
+        libc-dev \
+        libjpeg-turbo-dev \
+        libossp-uuid-dev \
+        libpq \
+        libressl-dev \
+        libssh2 \
+        libtelnet-dev \
+        libvncserver \
+        libwebp-dev \
+        libwebsockets-dev \
+        musl-dev \
+        openjdk8-jre \
+        postgresql-client=${POSTGRES_VERSION} \
+        postgresql-dev=${POSTGRES_VERSION} \
+        pulseaudio \
+        pulseaudio-dev \
+        ttf-dejavu \
+        ttf-droid \
+        ttf-liberation \
+        ttf-ubuntu-font-family \
+    && rm -rf /var/cache/apk/*
 
-# Apply the s6-overlay
-RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/${S6_VER}/s6-overlay-${ARCH}.tar.gz" \
-  && tar -xzf s6-overlay-${ARCH}.tar.gz -C / \
-  && tar -xzf s6-overlay-${ARCH}.tar.gz -C /usr ./bin \
-  && rm -rf s6-overlay-${ARCH}.tar.gz \
-  && mkdir -p ${GUACAMOLE_HOME} \
-    ${GUACAMOLE_HOME}/lib \
-    ${GUACAMOLE_HOME}/extensions
+# Download and install S6 Overlay
+RUN curl -sSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_VERSION}/s6-overlay-amd64.tar.gz | tar xz -C /
 
-WORKDIR ${GUACAMOLE_HOME}
+# Install Guacamole Server
+RUN apk add --no-cache --virtual .build-deps \
+        autoconf \
+        automake \
+        build-base \
+        cairo-dev \
+        ffmpeg-dev \
+        freerdp-dev \
+        glib-dev \
+        jpeg-dev \
+        libogg-dev \
+        libpng-dev \
+        libpulse-dev \
+        libsodium-dev \
+        libvorbis-dev \
+        libwebp-dev \
+        libwebsockets-dev \
+        mariadb-dev \
+        openssl-dev \
+        pango-dev \
+        sdl2-dev \
+        tiff-dev \
+        uuid-dev \
+        x264-dev \
+        zlib-dev \
+    && curl -sSL http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/source/guacamole-server-${GUAC_VER}.tar.gz | tar zx \
+    && cd guacamole-server-${GUAC_VER} \
+    && ./configure --with-init-dir=/etc/init.d --with-systemd-dir=/etc/systemd/system --disable-ldap --disable-ssh --disable-smartcard --disable-cliprdr --disable-pulseaudio --disable-pango --enable-vnc --enable-openssl --enable-webp --enable-websockets --enable-extensions --prefix=${GUACAMOLE_HOME} \
+    && make \
+    && make install \
+    && cd .. \
+    && rm -rf guacamole-server-${GUAC_VER} \
+    && apk del .build-deps
 
-# Link FreeRDP to where guac expects it to be
-RUN [ "$ARCH" = "armhf" ] && ln -s /usr/local/lib/freerdp /usr/lib/arm-linux-gnueabihf/freerdp || exit 0
-RUN [ "$ARCH" = "amd64" ] && ln -s /usr/local/lib/freerdp /usr/lib/x86_64-linux-gnu/freerdp || exit 0
+# Install Guacamole Client
+RUN apk add --no-cache \
+        apache-tomcat=${TOMCAT_VERSION} \
+        apache-tomcat-lib \
+        postgresql-jdbc \
+        ttf-dejavu \
+    && mkdir -p ${GUACAMOLE_HOME} \
+        ${GUACAMOLE_HOME}/lib \
+        ${GUACAMOLE_HOME}/extensions-available \
+        ${GUACAMOLE_HOME}/extensions \
+    && curl -sSL http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-${GUAC_VER}.war -o ${GUACAMOLE_HOME}/guacamole.war
+&& unzip ${GUACAMOLE_HOME}/guacamole.war -d ${GUACAMOLE_HOME}/guacamole
+&& rm ${GUACAMOLE_HOME}/guacamole.war
+&& rm -rf ${CATALINA_HOME}/webapps/*
+&& ln -s ${GUACAMOLE_HOME}/guacamole/ ${CATALINA_HOME}/webapps/ROOT
+&& curl -sSL http://jdbc.postgresql.org/download/postgresql-42.3.1.jar -o ${GUACAMOLE_HOME}/lib/postgresql.jar
+&& curl -sSL http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-auth-jdbc-${GUAC_VER}.tar.gz | tar xz --strip-components=1 -C ${GUACAMOLE_HOME}/extensions-available guacamole-auth-jdbc-${GUAC_VER}/postgresql/guacamole-auth-jdbc-postgresql-${GUAC_VER}.jar guacamole-auth-jdbc-${GUAC_VER}/postgresql/schema
+&& curl -sSL http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-auth-header-${GUAC_VER}.tar.gz | tar xz -C ${GUACAMOLE_HOME}/extensions-available guacamole-auth-header-${GUAC_VER}/guacamole-auth-header-${GUAC_VER}.jar
+&& curl -sSL http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-auth-duo-${GUAC_VER}.tar.gz | tar xz -C ${GUACAMOLE_HOME}/extensions-available guacamole-auth-duo-${GUAC_VER}/guacamole-auth-duo-${GUAC_VER}.jar
+&& curl -sSL http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-auth-totp-${GUAC_VER}.tar.gz | tar xz -C ${GUACAMOLE_HOME}/extensions-available guacamole-auth-totp-${GUAC_VER}/guacamole-auth-totp-${GUAC_VER}.jar
+&& apk del apache-tomcat-lib
 
-# Install guacamole-server
-RUN curl -SLO "http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/source/guacamole-server-${GUAC_VER}.tar.gz" \
-  && tar -xzf guacamole-server-${GUAC_VER}.tar.gz \
-  && cd guacamole-server-${GUAC_VER} \
-  && ./configure --enable-allow-freerdp-snapshots \
-  && make -j$(getconf _NPROCESSORS_ONLN) \
-  && make install \
-  && cd .. \
-  && rm -rf guacamole-server-${GUAC_VER}.tar.gz guacamole-server-${GUAC_VER} \
-  && ldconfig
+# Add Guacamole config and scripts
+COPY config ${GUACAMOLE_HOME}/config
+COPY scripts ${GUACAMOLE_HOME}/scripts
 
-# Install guacamole-client and postgres auth adapter
-RUN set -x \
-  && rm -rf ${CATALINA_HOME}/webapps/ROOT \
-  && curl -SLo ${CATALINA_HOME}/webapps/ROOT.war "http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-${GUAC_VER}.war" \
-  && curl -SLo ${GUACAMOLE_HOME}/lib/postgresql-42.1.4.jar "https://jdbc.postgresql.org/download/postgresql-42.1.4.jar" \
-  && curl -SLO "http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-auth-jdbc-${GUAC_VER}.tar.gz" \
-  && tar -xzf guacamole-auth-jdbc-${GUAC_VER}.tar.gz \
-  && cp -R guacamole-auth-jdbc-${GUAC_VER}/postgresql/guacamole-auth-jdbc-postgresql-${GUAC_VER}.jar ${GUACAMOLE_HOME}/extensions/ \
-  && cp -R guacamole-auth-jdbc-${GUAC_VER}/postgresql/schema ${GUACAMOLE_HOME}/ \
-  && rm -rf guacamole-auth-jdbc-${GUAC_VER} guacamole-auth-jdbc-${GUAC_VER}.tar.gz
+# Set permissions
+RUN chown -R nobody:nogroup ${GUACAMOLE_HOME}
+&& chmod +x ${GUACAMOLE_HOME}/scripts/*.sh
 
-# Add optional extensions
-RUN set -xe \
-  && mkdir ${GUACAMOLE_HOME}/extensions-available \
-  && for i in auth-ldap auth-duo auth-header auth-cas auth-openid auth-quickconnect auth-totp; do \
-    echo "http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-${i}-${GUAC_VER}.tar.gz" \
-    && curl -SLO "http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/binary/guacamole-${i}-${GUAC_VER}.tar.gz" \
-    && tar -xzf guacamole-${i}-${GUAC_VER}.tar.gz \
-    && cp guacamole-${i}-${GUAC_VER}/guacamole-${i}-${GUAC_VER}.jar ${GUACAMOLE_HOME}/extensions-available/ \
-    && rm -rf guacamole-${i}-${GUAC_VER} guacamole-${i}-${GUAC_VER}.tar.gz \
-  ;done
-
-# Final clean up
-RUN apt-get remove -y  \
-  apt-transport-https \
-  curl \
-  build-essential \
-  && rm -rf /var/lib/apt/lists/*
-
-ENV PATH=/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH
-ENV GUACAMOLE_HOME=/config/guacamole
-
-WORKDIR /config
-
-COPY root /
-
+Expose Guacamole HTTP port
 EXPOSE 8080
 
-ENTRYPOINT [ "/init" ]
+# Define container init command
+ENTRYPOINT ["/init"]
+
+Copy S6 init scripts
+COPY init /etc/cont-init.d/00-s6-init
+
+Copy S6 services
+COPY services.d /etc/services.d
+
+Copy S6 run scripts
+COPY cont-finish.d /etc/cont-finish.d
+
+Copy S6 finish scripts
+COPY cont-finish.d /etc/cont-finish.d
+
+Copy S6 Overlay binaries
+COPY s6-binaries /usr/local/bin
+
+Copy S6 Overlay libraries
+COPY s6-libraries /usr/local/lib
