@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Set up Guacamole configuration files
+cp /app/guacamole-server/src/main/resources/guacamole.properties.example /config/guacamole/guacamole.properties
+cp /app/guacamole-server/src/main/resources/user-mapping.xml.example /config/guacamole/user-mapping.xml
+
+# Set up database configuration
+sed -i "s/<param name=\"hostname\">localhost<\/param>/<param name=\"hostname\">postgres<\/param>/g" /config/guacamole/guacamole.properties
+sed -i "s/<param name=\"username\">guacuser<\/param>/<param name=\"username\">$POSTGRES_USER<\/param>/g" /config/guacamole/guacamole.properties
+sed -i "s/<param name=\"password\">guacuserpassword<\/param>/<param name=\"password\">$POSTGRES_PASSWORD<\/param>/g" /config/guacamole/guacamole.properties
+sed -i "s/<param name=\"database\">guacamole_db<\/param>/<param name=\"database\">$POSTGRES_DB<\/param>/g" /config/guacamole/guacamole.properties
+
+# Set up SSL/TLS configuration
+sed -i "s/<!-- <param name=\"ssl-key\">ssl\/key.pem<\/param> -->/<param name=\"ssl-key\">\/config\/guacamole\/ssl\/key.pem<\/param>/g" /config/guacamole/guacamole.properties
+sed -i "s/<!-- <param name=\"ssl-cert\">ssl\/cert.pem<\/param> -->/<param name=\"ssl-cert\">\/config\/guacamole\/ssl\/cert.pem<\/param>/g" /config/guacamole/guacamole.properties
+
+# Start the Guacamole server and guacd
+/usr/local/tomcat/bin/catalina.sh run
+guacd
