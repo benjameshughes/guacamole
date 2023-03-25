@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Build and Deploy Docker Image
 
 on:
   push:
@@ -6,28 +6,31 @@ on:
       - main
 
 env:
-  DOCKER_USERNAME: <your Docker Hub username>
-  DOCKER_PASSWORD: <your Docker Hub password>
-  IMAGE_NAME: <your Docker Hub repository name>
-  TAG: latest
+  IMAGE_NAME: your-docker-hub-username/guacamole
 
 jobs:
-  build-and-publish:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v1
-        with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ env.DOCKER_PASSWORD }}
-
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ env.IMAGE_NAME }}:${{ env.TAG }} .
-
-      - name: Push Docker image
-        run: |
-          docker push ${{ env.IMAGE_NAME }}:${{ env.TAG }}
+    - name: Checkout code
+      uses: actions/checkout@v2
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+        
+    - name: Build Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        file: Dockerfile
+        push: true
+        tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        build-args: |
+          - GUACAMOLE_VERSION=1.3.0
+          - POSTGRES_VERSION=42.2.23
+          
+    - name: Push Docker image
+      run: docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
