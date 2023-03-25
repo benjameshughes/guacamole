@@ -1,3 +1,4 @@
+# Base image
 FROM ubuntu:20.04
 
 # Install required dependencies
@@ -14,38 +15,45 @@ RUN apt-get update && apt-get install -y \
     libvncserver-dev \
     libpulse-dev \
     curl \
+    postgresql \
     && rm -rf /var/lib/apt/lists/*
 
+# Set environment variables
 ARG GUAC_VER=1.4.0
 ENV GUACAMOLE_HOME=/config/guacamole
 ENV POSTGRES_USER=guacamole
 ENV POSTGRES_PASSWORD=mysecretpassword
 ENV POSTGRES_DB=guacamole_db
 
-# Install Guacamole client and PostgreSQL auth adapter
-RUN mkdir -p ${GUACAMOLE_HOME}/lib \
-    && curl -SLo ${GUACAMOLE_HOME}/lib/guacamole-client.jar \
-        "https://downloads.apache.org/guacamole/${GUAC_VER}/binary/guacamole-${GUAC_VER}.war" \
-    && curl -SLo ${GUACAMOLE_HOME}/lib/postgresql.jar \
-        "https://jdbc.postgresql.org/download/postgresql-42.3.0.jar" \
-    && chmod 444 ${GUACAMOLE_HOME}/lib/*.jar
+# Install Guacamole server and client
+WORKDIR /usr/local/src
+RUN curl -SLO "https://downloads.apache.org/guacamole/${GUAC_VER}/source/guacamole-server-${GUAC_VER}.tar.gz" \
+    && tar xzf guacamole-server-${GUAC_VER}.tar.gz \
+    && rm guacamole-server-${GUAC_VER}.tar.gz \
+    && cd guacamole-server-${GUAC_VER} \
+    && ./configure --with-init-dir=/etc/init.d \
+    && make \
+    && make install \
+    && ldconfig \
+    && cd .. \
+    && curl -SLO "https://downloads.apache.org/guacamole/${GUAC_VER}/binary/guacamole-${GUAC_VER}.war" \
+    && mkdir -p /usr/share/tomcat8/.guacamole \
+    && ln -s /usr/local/src/guacamole-${GUAC_VER}.war /usr/share/tomcat8/.guacamole/guacamole.war
 
-# Install optional extensions
-RUN mkdir -p ${GUACAMOLE_HOME}/extensions-available \
-    && for i in auth-ldap auth-duo auth-header auth-cas auth-openid auth-quickconnect auth-totp; do \
-        curl -SLo ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar \
-            "https://downloads.apache.org/guacamole/${GUAC_VER}/binary/guacamole-${i}-${!i/_/-}-${!i/VER/_VER}.tar.gz" \
-        && tar -xzf ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar -C ${GUACAMOLE_HOME}/extensions-available \
-        && rm ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar \
-    ;done
+# Install PostgreSQL authentication module
+RUN curl -SLO "https://downloads.apache.org/guacamole/${GUAC_VER}/binary/guacamole-auth-jdbc-${GUAC_VER}.tar.gz" \
+    && tar xzf guacamole-auth-jdbc-${GUAC_VER}.tar.gz \
+    && rm guacamole-auth-jdbc-${GUAC_VER}.tar.gz \
+    && cp guacamole-auth-jdbc-${GUAC_VER}/postgresql/guacamole-auth-jdbc-postgresql-${GUAC_VER}.jar ${GUACAMOLE_HOME}/extensions \
+    && rm -rf guacamole-auth-jdbc-${GUAC_VER}
 
 # Copy init script
 COPY init /usr/local/bin/
 RUN chmod +x /usr/local/bin/init
 
-# Expose port 8080
+# Expose ports
 EXPOSE 8080
 
-# Run Guacamole on startup
+# Start Guacamole server
 ENTRYPOINT ["/usr/local/bin/init"]
 CMD ["guacd"]
