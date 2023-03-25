@@ -1,15 +1,9 @@
-# Build environment
-FROM maven:3.8.4-openjdk-17-slim AS build
-COPY README.md /app/README.md
-WORKDIR /app
-COPY . .
-RUN mvn package
-
 # Production environment
 FROM ubuntu:20.04 as production
 
 # Install required dependencies
 RUN apt-get update && apt-get install -y \
+    openjdk-17-jdk-headless \
     libcairo2-dev \
     libjpeg62-turbo-dev \
     libpng-dev \
@@ -28,10 +22,6 @@ ENV GUACAMOLE_HOME=/config/guacamole
 ENV POSTGRES_USER=guacamole
 ENV POSTGRES_PASSWORD=mysecretpassword
 ENV POSTGRES_DB=guacamole_db
-
-# Copy Guacamole and extensions from build environment
-COPY --from=build /app/guacamole-server/target/guacamole-server-* /app/guacamole-server/
-COPY --from=build /app/extensions /app/guacamole-server/extensions
 
 # Install Guacamole client and PostgreSQL auth adapter
 RUN mkdir -p ${GUACAMOLE_HOME}/lib \
