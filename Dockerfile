@@ -6,12 +6,7 @@ COPY . .
 RUN mvn package
 
 # Production environment
-FROM openjdk:17-jdk-slim
-ARG GUAC_VER=1.4.0
-ENV GUACAMOLE_HOME=/config/guacamole
-ENV POSTGRES_USER=guacamole
-ENV POSTGRES_PASSWORD=mysecretpassword
-ENV POSTGRES_DB=guacamole_db
+FROM ubuntu:20.04 as production
 
 # Install required dependencies
 RUN apt-get update && apt-get install -y \
@@ -25,7 +20,14 @@ RUN apt-get update && apt-get install -y \
     libtelnet-dev \
     libvncserver-dev \
     libpulse-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+ARG GUAC_VER=1.4.0
+ENV GUACAMOLE_HOME=/config/guacamole
+ENV POSTGRES_USER=guacamole
+ENV POSTGRES_PASSWORD=mysecretpassword
+ENV POSTGRES_DB=guacamole_db
 
 # Copy Guacamole and extensions from build environment
 COPY --from=build /app/guacamole-server/target/guacamole-server-* /app/guacamole-server/
