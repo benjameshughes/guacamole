@@ -1,5 +1,6 @@
 # Build environment
 FROM maven:3.8.4-openjdk-17-slim AS build
+COPY README.md /app/README.md
 WORKDIR /app
 COPY . .
 RUN mvn package
