@@ -6,7 +6,7 @@ COPY . .
 RUN mvn package
 
 # Production environment
-FROM gcr.io/distroless/java:17
+FROM gcr.io/distroless/java:latest
 ENV GUACAMOLE_HOME=/config/guacamole
 ENV POSTGRES_USER=guacamole
 ENV POSTGRES_PASSWORD=mysecretpassword
