@@ -6,7 +6,7 @@ COPY . .
 RUN mvn package
 
 # Production environment
-FROM gcr.io/distroless/java:nonroot-1.4.0
+FROM openjdk:17-jdk-slim
 ARG GUAC_VER=1.4.0
 ENV GUACAMOLE_HOME=/config/guacamole
 ENV POSTGRES_USER=guacamole
