@@ -6,30 +6,30 @@ COPY . .
 RUN mvn package
 
 # Production environment
-FROM gcr.io/distroless/java:latest
+FROM gcr.io/distroless/java:nonroot-1.4.0
+ARG GUAC_VER=1.4.0
 ENV GUACAMOLE_HOME=/config/guacamole
 ENV POSTGRES_USER=guacamole
 ENV POSTGRES_PASSWORD=mysecretpassword
 ENV POSTGRES_DB=guacamole_db
 
-# Install dependencies
+# Install required dependencies
 RUN apt-get update && apt-get install -y \
-    ca-certificates \
+    libcairo2-dev \
+    libjpeg62-turbo-dev \
+    libpng-dev \
+    libossp-uuid-dev \
+    libfreerdp-dev \
+    libpango1.0-dev \
+    libssh2-1-dev \
+    libtelnet-dev \
+    libvncserver-dev \
+    libpulse-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Guacamole and extensions
+# Copy Guacamole and extensions from build environment
 COPY --from=build /app/guacamole-server/target/guacamole-server-* /app/guacamole-server/
 COPY --from=build /app/extensions /app/guacamole-server/extensions
-
-# Set version numbers
-ARG GUAC_VER=1.4.0
-ARG AUTH_LDAP_VER=${GUAC_VER}
-ARG AUTH_DUO_VER=${GUAC_VER}
-ARG AUTH_HEADER_VER=${GUAC_VER}
-ARG AUTH_CAS_VER=${GUAC_VER}
-ARG AUTH_OPENID_VER=${GUAC_VER}
-ARG AUTH_QUICKCONNECT_VER=${GUAC_VER}
-ARG AUTH_TOTP_VER=${GUAC_VER}
 
 # Install Guacamole client and PostgreSQL auth adapter
 RUN mkdir -p ${GUACAMOLE_HOME}/lib \
@@ -47,11 +47,6 @@ RUN mkdir -p ${GUACAMOLE_HOME}/extensions-available \
         && tar -xzf ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar -C ${GUACAMOLE_HOME}/extensions-available \
         && rm ${GUACAMOLE_HOME}/extensions-available/guacamole-${i}.jar \
     ;done
-
-# Clean up dependencies
-RUN apt-get purge -y \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy init script
 COPY init /usr/local/bin/
